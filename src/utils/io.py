@@ -73,19 +73,36 @@ def load_image_rgb(path):
 
 def load_label_mask(path):
     """
-    Load a label mask as integer numpy array (H, W).
-    
-    Converts to grayscale ('L' mode) to handle RGB/RGBA/Palette PNGs
-    that encode class indices as (0,0,0), (1,1,1), (2,2,2), etc.
-    
+    Load a label mask as integer numpy array (H, W), preserving raw class indices.
+
+    AI4Mars labels are stored as palette PNGs (mode='P') where the raw palette
+    indices ARE the class values: 0=soil, 1=bedrock, 2=sand, 3=big_rock, 255=null.
+    Using .convert('L') is WRONG — it maps through the palette colours (luminosity)
+    which corrupts index values (e.g. index 1 → luminosity of palette colour #1).
+
+    This function reads the raw indices directly for palette/grayscale PNGs,
+    and converts to grayscale only for true RGB PNGs.
+
     Args:
         path: Path to label mask .png file.
-        
+
     Returns:
-        numpy array of shape (H, W), dtype uint8.
+        numpy array of shape (H, W), dtype uint8 with raw class indices.
     """
-    img = Image.open(path).convert('L')
-    return np.array(img, dtype=np.uint8)
+    img = Image.open(path)
+
+    if img.mode == 'P':
+        # Palette PNG — raw array gives palette indices directly
+        return np.array(img, dtype=np.uint8)
+    elif img.mode == 'L':
+        # Grayscale — values are already class indices
+        return np.array(img, dtype=np.uint8)
+    elif img.mode in ('RGB', 'RGBA'):
+        # RGB-encoded — take the red channel (R==G==B for class-index PNGs)
+        return np.array(img, dtype=np.uint8)[:, :, 0]
+    else:
+        # Fallback: convert to L
+        return np.array(img.convert('L'), dtype=np.uint8)
 
 
 def save_image(array, path):
