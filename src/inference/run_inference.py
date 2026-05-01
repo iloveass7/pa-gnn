@@ -48,7 +48,7 @@ def main():
     )
     
     print(f"Running PA-GNN Pipeline (Baseline: {args.baseline})")
-    path_details, data, fusion_dict = pipeline.run(
+    path_details, data, fusion_dict, _ = pipeline.run(
         img_tensor, 
         start_coords=(sy, sx), 
         goal_coords=(gy, gx), 

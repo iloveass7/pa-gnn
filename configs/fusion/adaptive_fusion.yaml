@@ -26,7 +26,7 @@ model:
   # α ∈ [0,1] per pixel — spatial trust map for learned signal
 
 training:
-  joint_with_cnn: true     # Train jointly with Stage 3 CNN
+  joint_with_cnn: false    # Two-phase: train CNN first, freeze, then train fusion
   optimizer: "adamw"
   learning_rate: 1.0e-4
   weight_decay: 1.0e-4

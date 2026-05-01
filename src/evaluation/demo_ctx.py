@@ -103,7 +103,7 @@ def main():
         
         paths = {}
         for bl in ['b1_euclidean', 'proposed']:
-            path, data, fusion_dict = pipeline.run(img_tensor, start_coords=start, goal_coords=goal, run_baseline=bl)
+            path, data, fusion_dict, _ = pipeline.run(img_tensor, start_coords=start, goal_coords=goal, run_baseline=bl)
             paths[bl] = path
             
         # Visualizations

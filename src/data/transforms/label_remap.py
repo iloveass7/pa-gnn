@@ -138,11 +138,13 @@ class HiRISELabelRemapper:
         5: 0.55,   # impact ejecta → uncertain
         6: 0.85,   # swiss cheese → hazardous
         7: 0.45,   # spider → uncertain
+        8: 0.50,   # edge_case → uncertain (ambiguous feature)
     }
     
     CLASS_NAMES = [
         "other", "crater", "dark_dune", "slope_streak",
-        "bright_dune", "impact_ejecta", "swiss_cheese", "spider"
+        "bright_dune", "impact_ejecta", "swiss_cheese", "spider",
+        "edge_case"
     ]
     
     def __init__(self, risk_map=None):
@@ -172,6 +174,7 @@ class HiRISELabelRemapper:
             5: remap.impact_ejecta,
             6: remap.swiss_cheese,
             7: remap.spider,
+            8: getattr(remap, 'edge_case', 0.50),
         }
         return cls(risk_map=risk_map)
     

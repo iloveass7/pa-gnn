@@ -31,7 +31,7 @@ def evaluate_dataset(pipeline, dataset, baselines, device):
         
         for bl in baselines:
             t0 = time.time()
-            path, data, _ = pipeline.run(img_tensor, start_coords=start, goal_coords=goal, run_baseline=bl)
+            path, data, _, _ = pipeline.run(img_tensor, start_coords=start, goal_coords=goal, run_baseline=bl)
             t_elapsed = time.time() - t0
             
             results[bl]['total'] += 1
