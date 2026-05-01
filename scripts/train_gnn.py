@@ -8,6 +8,7 @@ import json
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score
 

@@ -54,3 +54,73 @@ def compute_metrics(pred, target, hazard_threshold=0.5):
         'iou': iou.item(),
         'ece': ece.item()
     }
+
+
+def aggregate_patch_risk(h_final, method='mean'):
+    """
+    Aggregate pixel-level H_final to a single patch-level risk score.
+    Used for HiRISE cross-domain evaluation where ground truth is image-level.
+    
+    Args:
+        h_final: torch.Tensor (B, 1, H, W) or (1, H, W) — fused risk map
+        method: 'mean' (default) or 'max' (conservative)
+        
+    Returns:
+        float: scalar risk score for the patch
+    """
+    if h_final.dim() == 4:
+        h_final = h_final.squeeze(0)  # (1, H, W)
+    if h_final.dim() == 3:
+        h_final = h_final.squeeze(0)  # (H, W)
+    
+    if method == 'mean':
+        return h_final.mean().item()
+    elif method == 'max':
+        return h_final.max().item()
+    else:
+        raise ValueError(f"Unknown aggregation method: {method}")
+
+
+def compute_hirise_metrics(predicted_risks, true_risks, threshold=0.5):
+    """
+    Compute patch-level classification metrics for HiRISE evaluation.
+    
+    Args:
+        predicted_risks: list of float — aggregated predicted risk per crop
+        true_risks: list of float — ground truth risk score per crop
+        threshold: float — boundary between safe and hazardous
+        
+    Returns:
+        dict with accuracy, hazard_recall, hazard_precision, safe_recall
+    """
+    import numpy as np
+    
+    pred = np.array(predicted_risks)
+    true = np.array(true_risks)
+    
+    pred_haz = pred > threshold
+    true_haz = true > threshold
+    
+    # Overall accuracy
+    accuracy = (pred_haz == true_haz).mean()
+    
+    # Hazard recall (most important — how many real hazards did we catch?)
+    tp = (pred_haz & true_haz).sum()
+    fn = (~pred_haz & true_haz).sum()
+    hazard_recall = tp / (tp + fn + 1e-8)
+    
+    # Hazard precision 
+    fp = (pred_haz & ~true_haz).sum()
+    hazard_precision = tp / (tp + fp + 1e-8)
+    
+    # Safe recall
+    tn = (~pred_haz & ~true_haz).sum()
+    safe_recall = tn / (tn + fp + 1e-8)
+    
+    return {
+        'accuracy': float(accuracy),
+        'hazard_recall': float(hazard_recall),
+        'hazard_precision': float(hazard_precision),
+        'safe_recall': float(safe_recall),
+    }
+

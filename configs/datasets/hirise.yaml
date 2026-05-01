@@ -24,6 +24,7 @@ label_remap:
   impact_ejecta: 0.55   # Class 5 — scattered rocks, rough → Uncertain
   swiss_cheese: 0.85    # Class 6 — CO2 pits, unsafe → Hazardous
   spider: 0.45          # Class 7 — dendritic erosion → Uncertain
+  edge_case: 0.50       # Class 8 — ambiguous feature → Uncertain
 
 evaluation:
   use_originals_only: true   # Augmentation index 0 only

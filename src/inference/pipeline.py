@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import networkx as nx
+import time
 from pathlib import Path
 from src.models.fusion.fusion_model import EndToEndFusionModel
 from src.models.gnn.graph_builder import GraphBuilder
@@ -31,28 +32,42 @@ class PA_GNN_Pipeline:
             self.gat_model.load_state_dict(ckpt['model_state_dict'])
 
     @torch.no_grad()
-    def run(self, image, start_coords=None, goal_coords=None, run_baseline='proposed'):
+    def run(self, image, start_coords=None, goal_coords=None, run_baseline='proposed', benchmark=False):
         """
-        image: (1 or 3, H, W)
-        run_baseline: 'proposed', 'b1_euclidean', 'b2_physics', 'b3_learned', 'b4_static'
+        Full pipeline: image → path.
+        
+        Args:
+            image: (1 or 3, H, W)
+            start_coords: (y, x) tuple or None
+            goal_coords: (y, x) tuple or None
+            run_baseline: 'proposed', 'b1_euclidean', 'b2_physics', 'b3_learned', 'b4_static'
+            benchmark: if True, return per-stage timing dict
         """
+        timings = {} if benchmark else None
+        
         img_b = image.unsqueeze(0).to(self.device)
         
-        # Stage 1-4
+        # Stage 1-4: Physics + CNN + Fusion
+        t0 = time.time() if benchmark else None
         fusion_dict = self.fusion_model(img_b)
+        if benchmark: timings['stages_1_to_4_fusion'] = time.time() - t0
         
-        # Stage 5
+        # Stage 5: Superpixel Graph Construction
+        if benchmark: t0 = time.time()
         data = self.graph_builder.build(image, fusion_dict)
+        if benchmark: timings['stage_5_graph'] = time.time() - t0
         if data.x.size(0) == 0:
-            return None, data, fusion_dict
+            return None, data, fusion_dict, timings
             
         x_np = data.x.cpu().numpy()
         pos = data.pos.cpu().numpy()
         active = data.active_mask.cpu().numpy()
         
-        # Stage 6
+        # Stage 6: GATv2 Traversability Refinement
+        if benchmark: t0 = time.time()
         preds = self.gat_model(data.x, data.edge_index, data.edge_attr)
         risk_scores = preds.cpu().numpy()
+        if benchmark: timings['stage_6_gnn'] = time.time() - t0
         
         edges = data.edge_index.cpu().numpy()
         edge_attr = data.edge_attr.cpu().numpy()
@@ -80,13 +95,9 @@ class PA_GNN_Pipeline:
             u, v = edges[0, i], edges[1, i]
             
             if run_baseline == 'proposed':
-                # Deactivate safe nodes erroneously marked as safe?
-                # The config says "p_hat_i < 0.2 -> deactivated". Wait, the thesis blueprint says:
-                # "Nodes with p_hat_i < 0.2 deactivated" in some contexts, but usually <0.2 means VERY safe.
-                # If they are very safe, they should be active. Maybe they meant p_hat_i > 0.8 deactivated?
-                # Actually, earlier we said mean(H_final) > 0.7 -> obstacle. Let's keep active what is active.
-                if risk_scores[u] > 0.8: G.nodes[u]['active'] = False
-                if risk_scores[v] > 0.8: G.nodes[v]['active'] = False
+                deact_thresh = 1.0 - self.gat_cfg.graph.deactivation_threshold
+                if risk_scores[u] > deact_thresh: G.nodes[u]['active'] = False
+                if risk_scores[v] > deact_thresh: G.nodes[v]['active'] = False
                 
                 risk_u, risk_v = risk_scores[u], risk_scores[v]
                 avg_risk = (risk_u + risk_v) / 2.0
@@ -111,7 +122,7 @@ class PA_GNN_Pipeline:
                 
             G.add_edge(u, v, weight=w)
             
-        # Stage 7 Planning
+        # Stage 7: A* Path Planning
         if start_coords is None: start_coords = (10, 10)
         if goal_coords is None: goal_coords = (500, 500)
         
@@ -126,6 +137,10 @@ class PA_GNN_Pipeline:
         gamma_r = 0.4 if run_baseline == 'proposed' else 0.0
         gamma_s = 0.1 if run_baseline == 'proposed' else 0.0
         
+        if benchmark: t0 = time.time()
         path_details = run_astar(G, start_node, goal_node, gamma_r=gamma_r, gamma_s=gamma_s)
+        if benchmark:
+            timings['stage_7_astar'] = time.time() - t0
+            timings['total'] = sum(timings.values())
         
-        return path_details, data, fusion_dict
+        return path_details, data, fusion_dict, timings
