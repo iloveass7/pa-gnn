@@ -254,19 +254,35 @@ python src/evaluation/demo_ctx.py
 | 5 | Deactivation threshold reads from config | `pipeline.py` | 🟡 Config consistency |
 | 6 | Per-stage benchmark timing | `pipeline.py` | 🟡 Performance tracking |
 | 7 | Updated all `pipeline.run()` callers to 4-tuple | `evaluate_ai4mars.py`, `run_inference.py`, `demo_ctx.py` | 🟡 API compatibility |
-| 8 | **Fixed `load_label_mask()` — added `.convert('L')`** | `src/utils/io.py` | 🔴 **Training-breaking bug** |
-| 9 | Added `warnings.warn()` on empty valid_mask | `src/training/losses.py` | 🟡 Debug aid |
+| 8 | Added `warnings.warn()` on empty valid_mask | `src/training/losses.py` | 🟡 Debug aid |
+| 9 | **Palette-safe `load_label_mask()` — mode-aware reader** | `src/utils/io.py` | 🔴 **Training-breaking bug** |
+| 10 | **Fixed range mask condition (`!= 0` not `== 0`)** | `src/data/loaders/ai4mars_loader.py` | 🔴 **Training-breaking bug** |
 
-### Fix #8 Detail — Root Cause of Loss = 0.0000
+### Fix #9 Detail — Palette PNG label loading
 
-AI4Mars label PNGs are RGB-encoded: `(0,0,0)=soil`, `(1,1,1)=bedrock`, `(2,2,2)=sand`, `(3,3,3)=big_rock`, `(255,255,255)=null`.
+AI4Mars labels are **palette PNGs (mode='P')** where the raw palette indices ARE the class values: `0=soil, 1=bedrock, 2=sand, 3=big_rock, 255=null`.
 
-`load_label_mask()` called `Image.open(path)` **without** `.convert('L')`. PIL returned a 3D array (H,W,3) or palette-indexed data. When passed through the LUT remapper (which maps only indices 0-3 to valid risk scores), all pixels mapped to `-1.0` (ignore). This made `valid_mask.sum() == 0` every batch → loss function hit the early-return → **loss = 0.0000 forever**.
+Previous code used `.convert('L')` which maps through the palette colour table using luminosity — corrupting index values (e.g. palette index `1` → luminosity of whatever RGB colour is at palette position 1, NOT the value `1`).
+
+**Fix:** Read mode-aware — for `'P'` and `'L'` mode PNGs, take the raw numpy array directly. For `'RGB'` take channel 0 (R==G==B for class-index PNGs).
+
+```python
+img = Image.open(path)
+if img.mode in ('P', 'L'):
+    return np.array(img, dtype=np.uint8)       # raw indices preserved
+elif img.mode in ('RGB', 'RGBA'):
+    return np.array(img, dtype=np.uint8)[:, :, 0]   # red channel = index
+```
+
+### Fix #10 Detail — Range mask condition was inverted
+
+AI4Mars `rng-30m` range masks: **0 (black) = within 30m = VALID**, **non-zero (white) = beyond 30m = out of range**.
+
+Previous code: `label[range_mask == 0] = 255` — this **nullified all valid (in-range) pixels**, leaving only the distant untrustworthy pixels. Every batch became all-ignore → loss = 0.
 
 ```diff
-# src/utils/io.py
-- img = Image.open(path)
-+ img = Image.open(path).convert('L')
+- label[range_mask == 0] = 255   # WRONG — killed valid pixels
++ label[range_mask != 0] = 255   # CORRECT — kills out-of-range pixels
 ```
 
 ---

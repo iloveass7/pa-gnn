@@ -140,8 +140,8 @@ class AI4MarsDataset(Dataset):
         # Apply range mask: set out-of-range pixels to null (255)
         if sample["range_mask"] is not None:
             range_mask = load_label_mask(sample["range_mask"])
-            # range_mask: 0 = out of range, 1 = in range
-            label[range_mask == 0] = 255
+            # AI4Mars rng-30m mask: 0 (black) = within 30m (valid), non-zero = out of range
+            label[range_mask != 0] = 255
         
         # Resize image (bilinear) and label (nearest)
         image = resize_image(image / 255.0, self.image_size, "bilinear")
