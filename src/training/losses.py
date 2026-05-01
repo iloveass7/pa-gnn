@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import warnings
 
 class RiskLoss(nn.Module):
     def __init__(self, bce_weight=1.0, bce_hazard_weight=3.0, dice_weight=0.5, 
@@ -20,7 +21,11 @@ class RiskLoss(nn.Module):
         valid_mask = (target >= 0).float()
         
         if valid_mask.sum() == 0:
-            # Return 0 loss to avoid NaN if entire batch is ignored
+            # All pixels are ignored — this should be rare. Log a warning.
+            warnings.warn(
+                f"RiskLoss: valid_mask is empty! target range=[{target.min():.2f}, {target.max():.2f}], "
+                f"shape={target.shape}. Check label loading/remapping."
+            )
             return {
                 'loss': pred.sum() * 0.0, 
                 'bce': torch.tensor(0.0, device=pred.device), 

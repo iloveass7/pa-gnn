@@ -254,6 +254,20 @@ python src/evaluation/demo_ctx.py
 | 5 | Deactivation threshold reads from config | `pipeline.py` | 🟡 Config consistency |
 | 6 | Per-stage benchmark timing | `pipeline.py` | 🟡 Performance tracking |
 | 7 | Updated all `pipeline.run()` callers to 4-tuple | `evaluate_ai4mars.py`, `run_inference.py`, `demo_ctx.py` | 🟡 API compatibility |
+| 8 | **Fixed `load_label_mask()` — added `.convert('L')`** | `src/utils/io.py` | 🔴 **Training-breaking bug** |
+| 9 | Added `warnings.warn()` on empty valid_mask | `src/training/losses.py` | 🟡 Debug aid |
+
+### Fix #8 Detail — Root Cause of Loss = 0.0000
+
+AI4Mars label PNGs are RGB-encoded: `(0,0,0)=soil`, `(1,1,1)=bedrock`, `(2,2,2)=sand`, `(3,3,3)=big_rock`, `(255,255,255)=null`.
+
+`load_label_mask()` called `Image.open(path)` **without** `.convert('L')`. PIL returned a 3D array (H,W,3) or palette-indexed data. When passed through the LUT remapper (which maps only indices 0-3 to valid risk scores), all pixels mapped to `-1.0` (ignore). This made `valid_mask.sum() == 0` every batch → loss function hit the early-return → **loss = 0.0000 forever**.
+
+```diff
+# src/utils/io.py
+- img = Image.open(path)
++ img = Image.open(path).convert('L')
+```
 
 ---
 

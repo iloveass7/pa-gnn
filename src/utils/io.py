@@ -75,13 +75,16 @@ def load_label_mask(path):
     """
     Load a label mask as integer numpy array (H, W).
     
+    Converts to grayscale ('L' mode) to handle RGB/RGBA/Palette PNGs
+    that encode class indices as (0,0,0), (1,1,1), (2,2,2), etc.
+    
     Args:
         path: Path to label mask .png file.
         
     Returns:
         numpy array of shape (H, W), dtype uint8.
     """
-    img = Image.open(path)
+    img = Image.open(path).convert('L')
     return np.array(img, dtype=np.uint8)
 
 
