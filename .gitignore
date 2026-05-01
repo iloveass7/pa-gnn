@@ -1,0 +1,42 @@
+# PA-GNN .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Data (too large for git)
+data/raw/
+data/processed/
+
+# Model checkpoints
+checkpoints/
+*.pth
+*.pt
+
+# Logs
+logs/
+*.log
+
+# Experiment outputs
+experiments/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+*.env
+.env

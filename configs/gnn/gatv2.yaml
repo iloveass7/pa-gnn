@@ -1,0 +1,67 @@
+# GATv2 Configuration
+
+model:
+  name: "gatv2"
+  
+  # Layer 1: GATv2Conv(14→32, 4 heads, concat=True → 128)
+  layer1:
+    in_channels: 14
+    out_channels: 32
+    heads: 4
+    concat: true           # Output: 32*4 = 128
+    dropout: 0.3
+    activation: "elu"
+  
+  # Layer 2: GATv2Conv(128→32, 4 heads, concat=False → 32)
+  layer2:
+    in_channels: 128
+    out_channels: 32
+    heads: 4
+    concat: false          # Output: 32 (average of heads)
+    dropout: 0.2
+    activation: "elu"
+  
+  # Output head: Linear(32→1) → Sigmoid
+  output:
+    in_features: 32
+    out_features: 1
+    activation: "sigmoid"
+
+training:
+  optimizer: "adam"
+  learning_rate: 1.0e-3
+  weight_decay: 5.0e-4
+  
+  epochs: 100
+  early_stopping:
+    enabled: true
+    patience: 15
+    monitor: "val_auc_roc"
+    mode: "max"
+  
+  loss:
+    type: "bce"
+    positive_weight: 3.0   # Weight for hazardous class
+  
+  # Weak labeling: 2-hop neighbours of confirmed hazards
+  weak_labeling:
+    enabled: true
+    hops: 2
+    label_value: 0.7       # Weaker than confirmed hazards (1.0)
+
+graph:
+  # SLIC superpixel parameters
+  slic:
+    n_segments: 300
+    compactness: 10.0
+    sigma: 1.0
+
+  # Node deactivation threshold
+  hazard_threshold: 0.7    # Nodes with mean(H_final) > 0.7 → obstacle
+  deactivation_threshold: 0.2  # After GATv2: p̂_i < 0.2 → deactivated
+
+  # Edge weight formula coefficients
+  edge_weights:
+    alpha_w: 0.6           # Risk weight
+    beta_w: 0.25           # Distance weight
+    gamma_w: 0.15          # Slope discontinuity weight

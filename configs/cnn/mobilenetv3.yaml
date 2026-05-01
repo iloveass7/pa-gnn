@@ -1,0 +1,42 @@
+# CNN Configuration: MobileNetV3-Large + DeepLabV3+
+
+model:
+  name: "mobilenetv3_deeplabv3plus"
+  
+  encoder:
+    backbone: "mobilenet_v3_large"
+    pretrained: true       # ImageNet-1k weights
+    freeze_bn: false
+    
+  decoder:
+    name: "deeplabv3plus"
+    aspp_rates: [6, 12, 18]
+    aspp_out_channels: 256
+    low_level_channels: 24   # From stride-4 features
+    low_level_out_channels: 48
+    
+  head:
+    output_channels: 1      # Single-channel risk map
+    activation: "sigmoid"   # Output in [0, 1]
+
+training:
+  optimizer: "adamw"
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  scheduler: "cosine_annealing"
+  scheduler_T_max: 60
+  
+  batch_size: 8
+  epochs: 60
+  early_stopping:
+    enabled: true
+    patience: 10
+    monitor: "val_hazard_recall"
+    mode: "max"
+  
+  loss:
+    bce_weight: 1.0
+    bce_hazard_weight: 3.0     # Higher weight for hazardous regions
+    dice_weight: 0.5           # λ1
+    dice_threshold: 0.7        # Dice applied to pixels with label > 0.7
+    tv_weight: 0.1             # λ2 — total variation smoothness

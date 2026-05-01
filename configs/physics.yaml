@@ -1,0 +1,27 @@
+# Physics Feature Extraction Configuration
+
+physics:
+  # Normalization
+  eps: 1.0e-8
+  
+  # Slope (S) - Sobel gradient magnitude
+  slope:
+    enabled: true
+    kernel_size: 3
+    
+  # Roughness (R) - Local standard deviation
+  roughness:
+    enabled: true
+    window_size: 7
+    
+  # Discontinuity (D) - Laplacian of Gaussian (LoG)
+  discontinuity:
+    enabled: true
+    kernel_size: 9
+    sigma: 2.0
+    
+  # Fusion weights (S, R, D)
+  weights:
+    w_s: 0.4  # Slope weight
+    w_r: 0.3  # Roughness weight
+    w_d: 0.3  # Discontinuity weight

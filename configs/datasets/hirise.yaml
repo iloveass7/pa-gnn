@@ -1,0 +1,31 @@
+# HiRISE Map-Proj-v3 Dataset Configuration
+
+dataset:
+  name: "hirise_v3"
+  source: "HiRISE MRO orbital"
+  resolution: "25cm_per_px"
+  label_type: "image_level"    # One class per 227x227 crop
+
+preprocessing:
+  original_size: 227
+  target_size: 512
+  resize_method: "bilinear"    # Alternative: zero_pad_then_resize
+  normalize: "per_tile_minmax"
+  normalize_eps: 1.0e-8
+  replicate_channels: 3
+
+label_remap:
+  # HiRISE landmark class → risk score (8 actual classes from classmap)
+  other: 0.15           # Class 0 — generic flat terrain → Safe
+  crater: 0.90          # Class 1 — rim + interior hazard → Hazardous
+  dark_dune: 0.85       # Class 2 — fine-grained, slip risk → Hazardous
+  slope_streak: 0.80    # Class 3 — mass movement, unstable → Hazardous
+  bright_dune: 0.50     # Class 4 — variable composition → Uncertain
+  impact_ejecta: 0.55   # Class 5 — scattered rocks, rough → Uncertain
+  swiss_cheese: 0.85    # Class 6 — CO2 pits, unsafe → Hazardous
+  spider: 0.45          # Class 7 — dendritic erosion → Uncertain
+
+evaluation:
+  use_originals_only: true   # Augmentation index 0 only
+  augmentations_per_original: 7  # original + 6 augmented
+  # Dataset is ordered: original, aug1..6, repeat

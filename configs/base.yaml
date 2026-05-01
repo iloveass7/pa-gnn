@@ -1,0 +1,54 @@
+# PA-GNN Base Configuration
+# Physics-Aware Graph Neural Network Pipeline
+
+project:
+  name: "pa-gnn"
+  version: "0.1.0"
+  seed: 42
+  device: "auto"  # auto | cpu | cuda
+
+paths:
+  project_root: "d:/Mars/pa-gnn"
+  
+  # Raw dataset locations
+  ai4mars:
+    root: "d:/Mars/ai4mars-dataset-merged-0.6/ai4mars-dataset-merged-0.6"
+    images: "d:/Mars/ai4mars-dataset-merged-0.6/ai4mars-dataset-merged-0.6/msl/ncam/images/edr"
+    labels_train: "d:/Mars/ai4mars-dataset-merged-0.6/ai4mars-dataset-merged-0.6/msl/ncam/labels/train"
+    labels_test: "d:/Mars/ai4mars-dataset-merged-0.6/ai4mars-dataset-merged-0.6/msl/ncam/labels/test/masked-gold-min3-100agree"
+    range_masks: "d:/Mars/ai4mars-dataset-merged-0.6/ai4mars-dataset-merged-0.6/msl/ncam/images/rng-30m"
+  
+  murraylab:
+    tiles_1: "d:/Mars/archive/original-image-slices-512x512/original-image-slices-512x512/sliced_tiles_1"
+    tiles_2: "d:/Mars/archive/original-image-slices-512x512/original-image-slices-512x512/sliced_tiles_2"
+  
+  hirise:
+    images: "d:/Mars/hirise-map-proj-v3/map-proj-v3"
+    labels: "d:/Mars/hirise-map-proj-v3/labels-map-proj-v3.txt"
+    classmap: "d:/Mars/hirise-map-proj-v3/landmarks_map-proj-v3_classmap.csv"
+  
+  # Processed data output
+  processed: "d:/Mars/pa-gnn/data/processed"
+  splits: "d:/Mars/pa-gnn/data/splits"
+  
+  # Outputs
+  checkpoints: "d:/Mars/pa-gnn/checkpoints"
+  logs: "d:/Mars/pa-gnn/logs"
+  results: "d:/Mars/pa-gnn/results"
+  experiments: "d:/Mars/pa-gnn/experiments"
+
+image:
+  size: 512
+  channels: 3
+  normalize_eps: 1.0e-8
+
+training:
+  default_batch_size: 8
+  default_num_workers: 4
+  pin_memory: true
+
+logging:
+  level: "INFO"
+  console: true
+  file: true
+  log_dir: "d:/Mars/pa-gnn/logs/console"

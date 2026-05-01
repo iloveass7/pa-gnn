@@ -1,0 +1,46 @@
+# AI4Mars Dataset Configuration
+
+dataset:
+  name: "ai4mars"
+  mission: "msl"
+  camera: "ncam"
+  label_schema: "nav"  # NAV navigation labels (4 classes → 3-class risk)
+
+preprocessing:
+  image_size: 512
+  normalize: "per_tile_minmax"
+  normalize_eps: 1.0e-8
+  replicate_channels: 3
+  
+  # Label resize must use NEAREST to preserve integer classes
+  label_interpolation: "nearest"
+  image_interpolation: "bilinear"
+
+label_remap:
+  # AI4Mars NAV → continuous risk scores
+  soil: 0.1           # pixel value 0 → Safe
+  bedrock: 0.5        # pixel value 1 → Uncertain
+  sand: 0.4           # pixel value 2 → Uncertain (slip risk)
+  big_rock: 0.9       # pixel value 3 → Hazardous
+  null_value: 255      # excluded from loss (ignore_index=255)
+
+augmentation:
+  enabled: true        # Only for training split
+  horizontal_flip: 0.5
+  vertical_flip: 0.5
+  rotation_degrees: 15
+  brightness_range: 0.2
+  contrast_range: 0.2
+  gaussian_noise_sigma_max: 0.02
+
+splits:
+  train_ratio: 0.70
+  val_ratio: 0.15
+  # test = expert labels (masked-gold-min3-100agree), predefined
+  stratify_by: "dominant_class"
+  
+dataloader:
+  batch_size: 8
+  num_workers: 4
+  pin_memory: true
+  shuffle_train: true

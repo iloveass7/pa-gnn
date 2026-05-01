@@ -1,0 +1,38 @@
+# Adaptive Fusion Configuration
+
+model:
+  name: "adaptive_spatial_attention"
+  
+  # 3-layer lightweight CNN
+  architecture:
+    input_channels: 3      # [H_physics | H_learned | original_image]
+    layer1:
+      out_channels: 16
+      kernel_size: 3
+      padding: 1
+      activation: "relu"
+    layer2:
+      out_channels: 8
+      kernel_size: 3
+      padding: 1
+      activation: "relu"
+    layer3:
+      out_channels: 1
+      kernel_size: 1
+      padding: 0
+      activation: "sigmoid"
+
+  # Fusion formula: H_final = α · H_learned + (1-α) · H_physics
+  # α ∈ [0,1] per pixel — spatial trust map for learned signal
+
+training:
+  joint_with_cnn: true     # Train jointly with Stage 3 CNN
+  optimizer: "adamw"
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  
+  # Loss is applied to H_final, not H_learned alone
+  loss_target: "h_final"
+
+baselines:
+  static_alpha: 0.5        # B4 baseline: fixed global α

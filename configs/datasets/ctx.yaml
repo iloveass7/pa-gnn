@@ -1,0 +1,25 @@
+# MurrayLab CTX Orbital Tiles Configuration
+
+dataset:
+  name: "murraylab_ctx"
+  source: "CTX MRO orbital"
+  resolution: "6m_per_px"
+  label_type: "none"           # No labels — qualitative demo only
+
+preprocessing:
+  image_size: 512              # Already 512x512, no resize needed
+  normalize: "per_tile_minmax"
+  normalize_eps: 1.0e-8
+  replicate_channels: 3
+
+quality_filter:
+  enabled: true
+  max_saturated_fraction: 0.30  # Reject tiles with >30% near-saturated pixels
+  saturation_threshold: 0.05    # Pixels within 5% of min/max
+
+selection:
+  num_demo_tiles: 5             # Select 3-5 diverse tiles for demo
+  criteria:
+    - "contains_smooth_terrain"
+    - "contains_rough_terrain"
+    - "clear_contrast"
