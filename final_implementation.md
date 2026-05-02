@@ -199,8 +199,9 @@ python scripts/train_cnn.py
 # Step 4: Train Fusion (Stage 4) — CNN frozen
 python scripts/train_fusion.py --cnn_ckpt checkpoints/cnn/best_model.pth
 
-# Step 5: Train GNN (Stage 6)
-python scripts/train_gnn.py
+# Step 5: Train GNN — two options (see Section 4.1 below)
+python scripts/train_gnn.py         # original: slow, on-the-fly
+python scripts/train_gnn_fast.py    # recommended: precomputed graphs
 
 # Step 6: Evaluate on AI4Mars test set
 python src/evaluation/evaluate_ai4mars.py
@@ -211,6 +212,42 @@ python src/evaluation/evaluate_hirise.py
 # Step 8: CTX qualitative demo
 python src/evaluation/demo_ctx.py
 ```
+
+### 4.1 Fast GNN Training via Precomputed Graphs (Recommended)
+
+On-the-fly graph building takes ~0.8s per image (SLIC + 14 features + edges). Over 100 epochs × 13,229 images = **~12 million redundant graph builds → ~8 days**.
+
+**Precompute once, train fast:**
+
+```bash
+# Step 5a — Precompute graphs (run once, ~3 hrs)
+# Requires a trained fusion checkpoint from Step 4
+python scripts/precompute_graphs.py \
+    --fusion_ckpt checkpoints/fusion/best_model.pth \
+    --split all
+
+# Step 5b — Fast GNN training (~3-4 hrs for 100 epochs)
+python scripts/train_gnn_fast.py \
+    --graphs_dir d:/Mars/pa-gnn/data/processed/graphs \
+    --batch_size 32
+```
+
+| Method | Per-image | Per-epoch (13k imgs) | 100 epochs |
+|---|---|---|---|
+| `train_gnn.py` (on-the-fly) | ~0.8s | ~3h | ~8 days |
+| `train_gnn_fast.py` (precomputed) | ~0.01s | ~2.5 min | ~4 hours |
+
+**New files (zero changes to existing code):**
+
+| File | Purpose |
+|---|---|
+| `scripts/precompute_graphs.py` | One-time runner — saves `.pt` files |
+| `src/data/loaders/precomputed_graph_dataset.py` | PyG `Dataset` class — loads `.pt` files |
+| `scripts/train_gnn_fast.py` | Fast training loop, batch_size=32, PyG DataLoader |
+
+**Storage:** 13,229 graphs × ~300 nodes × 14 features ≈ **~1 GB on disk**.
+
+**Important:** Precompute AFTER fusion training is complete. The `.pt` files contain the fusion model's output baked in. If you re-train the fusion model, re-run `precompute_graphs.py`.
 
 ---
 
