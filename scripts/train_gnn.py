@@ -138,8 +138,8 @@ def main():
     train_ds = AI4MarsDataset.from_config(base_cfg, ai4mars_cfg, split="train")
     val_ds = AI4MarsDataset.from_config(base_cfg, ai4mars_cfg, split="val")
     
-    train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4)
     
     # Training Loop
     epochs = gat_cfg.training.epochs
@@ -160,8 +160,10 @@ def main():
             # 1. Build Graph
             with torch.no_grad():
                 fusion_dict = fusion_model(images)
-                data = graph_builder.build(images, fusion_dict, target=targets)
-                
+                fusion_dict = {k: v.squeeze(0) if isinstance(v, torch.Tensor) else v 
+                for k, v in fusion_dict.items()}
+
+                data = graph_builder.build(images[0], fusion_dict, target=targets[0])
             if data.x.size(0) == 0: continue
             
             # 2. Weak Labeling
