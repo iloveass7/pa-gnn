@@ -1,5 +1,5 @@
 import numpy as np
-from skimage.future import graph
+from skimage import graph
 from scipy.spatial import distance
 
 def build_adjacency_and_edges(label_map, features, centroids, is_hazardous, 

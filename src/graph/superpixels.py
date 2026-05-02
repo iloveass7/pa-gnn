@@ -11,7 +11,8 @@ def compute_superpixels(image, n_segments=300, compactness=10.0, sigma=1.0):
         label_map: np.ndarray (H, W) of superpixel labels
     """
     # Convert to numpy and channels-last
-    img_np = image.permute(1, 2, 0).cpu().numpy()
+    # .squeeze(0) turns [1, 3, H, W] into [3, H, W]
+    img_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
     
     # If 1 channel, convert back to 2D
     if img_np.shape[2] == 1:

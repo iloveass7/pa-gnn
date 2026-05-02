@@ -12,6 +12,28 @@ from datetime import datetime
 _loggers = {}
 
 
+def setup_logger(log_file, level="INFO"):
+    """
+    Setup the root logger to write to a specific file.
+    """
+    log_file = Path(log_file)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+    
+    formatter = logging.Formatter(
+        fmt="%(asctime)s | %(name)-20s | %(levelname)-7s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setFormatter(formatter)
+    
+    # Only add if it doesn't exist
+    if not any(isinstance(h, logging.FileHandler) for h in root_logger.handlers):
+        root_logger.addHandler(file_handler)
+
 def get_logger(name, log_dir=None, level="INFO", console=True, file=True):
     """
     Get or create a named logger with console and file handlers.

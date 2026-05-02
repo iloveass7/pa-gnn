@@ -78,7 +78,7 @@ def main():
     
     if args.cnn_ckpt:
         logger.info(f"Loading CNN checkpoint from {args.cnn_ckpt}")
-        ckpt = torch.load(args.cnn_ckpt, map_location='cpu', weights_only=True)
+        ckpt = torch.load(args.cnn_ckpt, map_location='cpu', weights_only=False)
         model.cnn.load_state_dict(ckpt['model_state_dict'])
         
     model = model.to(device)
