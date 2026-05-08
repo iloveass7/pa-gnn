@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import torch
 import numpy as np
 import networkx as nx
@@ -24,11 +25,11 @@ class PA_GNN_Pipeline:
         
         # Load weights if exist
         if fusion_ckpt and Path(fusion_ckpt).exists():
-            ckpt = torch.load(fusion_ckpt, map_location=device, weights_only=True)
+            ckpt = torch.load(fusion_ckpt, map_location=device, weights_only=False)
             self.fusion_model.load_state_dict(ckpt['model_state_dict'])
             
         if gat_ckpt and Path(gat_ckpt).exists():
-            ckpt = torch.load(gat_ckpt, map_location=device, weights_only=True)
+            ckpt = torch.load(gat_ckpt, map_location=device, weights_only=False)
             self.gat_model.load_state_dict(ckpt['model_state_dict'])
 
     @torch.no_grad()
@@ -59,12 +60,15 @@ class PA_GNN_Pipeline:
         if data.x.size(0) == 0:
             return None, data, fusion_dict, timings
             
+        # Cache CPU numpy views before moving data to device
         x_np = data.x.cpu().numpy()
         pos = data.pos.cpu().numpy()
         active = data.active_mask.cpu().numpy()
-        
+
         # Stage 6: GATv2 Traversability Refinement
+        # GraphBuilder returns CPU tensors; move to device before the forward pass.
         if benchmark: t0 = time.time()
+        data = data.to(self.device)
         preds = self.gat_model(data.x, data.edge_index, data.edge_attr)
         risk_scores = preds.cpu().numpy()
         if benchmark: timings['stage_6_gnn'] = time.time() - t0
@@ -91,6 +95,10 @@ class PA_GNN_Pipeline:
         ew_cfg = self.gat_cfg.graph.edge_weights
         alpha_w, beta_w, gamma_w = ew_cfg.alpha_w, ew_cfg.beta_w, ew_cfg.gamma_w
         
+        # Max possible distance between any two nodes (diagonal), used for normalisation
+        # Computed from actual position range so it works for any image size.
+        max_pos_dist = np.linalg.norm(pos.max(axis=0) - pos.min(axis=0)) + 1e-8
+
         for i in range(edges.shape[1]):
             u, v = edges[0, i], edges[1, i]
             
@@ -101,7 +109,7 @@ class PA_GNN_Pipeline:
                 
                 risk_u, risk_v = risk_scores[u], risk_scores[v]
                 avg_risk = (risk_u + risk_v) / 2.0
-                dist = np.linalg.norm(pos[u] - pos[v]) / 724.07
+                dist = np.linalg.norm(pos[u] - pos[v]) / max_pos_dist
                 diff_s = abs(x_np[u, 2] - x_np[v, 2])
                 w = alpha_w * avg_risk + beta_w * dist + gamma_w * diff_s
                 
@@ -112,11 +120,11 @@ class PA_GNN_Pipeline:
             elif run_baseline == 'b2_physics':
                 G.nodes[u]['active'] = True
                 G.nodes[v]['active'] = True
-                w = alpha_w * ((x_np[u, 5] + x_np[v, 5])/2) + beta_w * (np.linalg.norm(pos[u] - pos[v]) / 724.07)
+                w = alpha_w * ((x_np[u, 5] + x_np[v, 5])/2) + beta_w * (np.linalg.norm(pos[u] - pos[v]) / max_pos_dist)
             elif run_baseline == 'b3_learned':
                 G.nodes[u]['active'] = True
                 G.nodes[v]['active'] = True
-                w = alpha_w * ((x_np[u, 6] + x_np[v, 6])/2) + beta_w * (np.linalg.norm(pos[u] - pos[v]) / 724.07)
+                w = alpha_w * ((x_np[u, 6] + x_np[v, 6])/2) + beta_w * (np.linalg.norm(pos[u] - pos[v]) / max_pos_dist)
             else:
                 w = edge_attr[i]
                 

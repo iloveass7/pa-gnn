@@ -9,18 +9,18 @@ def compute_node_features(label_map, image, h_physics, h_learned, h_final, alpha
     if image.size(0) == 3:
         img_gray = image.mean(dim=0).cpu().numpy()
     else:
-        img_gray = image.squeeze(0).cpu().numpy()
+        img_gray = image.squeeze().cpu().numpy()
         
-    s_np = slope.squeeze(0).cpu().numpy()
-    r_np = roughness.squeeze(0).cpu().numpy()
-    d_np = discontinuity.squeeze(0).cpu().numpy()
-    h_p_np = h_physics.squeeze(0).cpu().numpy()
-    h_l_np = h_learned.squeeze(0).cpu().numpy()
-    h_f_np = h_final.squeeze(0).cpu().numpy()
-    alpha_np = alpha_map.squeeze(0).cpu().numpy()
+    s_np = slope.squeeze().cpu().numpy()
+    r_np = roughness.squeeze().cpu().numpy()
+    d_np = discontinuity.squeeze().cpu().numpy()
+    h_p_np = h_physics.squeeze().cpu().numpy()
+    h_l_np = h_learned.squeeze().cpu().numpy()
+    h_f_np = h_final.squeeze().cpu().numpy()
+    alpha_np = alpha_map.squeeze().cpu().numpy()
     
     if target is not None:
-        target_np = target.squeeze(0).cpu().numpy()
+        target_np = target.squeeze().cpu().numpy()
     else:
         target_np = None
     

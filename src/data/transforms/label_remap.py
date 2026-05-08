@@ -128,7 +128,9 @@ class HiRISELabelRemapper:
     Output: float risk score in [0, 1]
     """
     
-    # Default risk mapping (8 real classes from classmap)
+    # Default risk mapping (8 real classes from classmap — indices 0-7 ONLY)
+    # NOTE: The blueprint mentioned an 'edge_case' class (index 8) but this does
+    # NOT exist in the actual HiRISE v3 data (landmarks_map-proj-v3_classmap.csv).
     DEFAULT_RISK_MAP = {
         0: 0.15,   # other → safe
         1: 0.90,   # crater → hazardous
@@ -138,13 +140,11 @@ class HiRISELabelRemapper:
         5: 0.55,   # impact ejecta → uncertain
         6: 0.85,   # swiss cheese → hazardous
         7: 0.45,   # spider → uncertain
-        8: 0.50,   # edge_case → uncertain (ambiguous feature)
     }
     
     CLASS_NAMES = [
         "other", "crater", "dark_dune", "slope_streak",
         "bright_dune", "impact_ejecta", "swiss_cheese", "spider",
-        "edge_case"
     ]
     
     def __init__(self, risk_map=None):
@@ -174,7 +174,6 @@ class HiRISELabelRemapper:
             5: remap.impact_ejecta,
             6: remap.swiss_cheese,
             7: remap.spider,
-            8: getattr(remap, 'edge_case', 0.50),
         }
         return cls(risk_map=risk_map)
     
@@ -191,7 +190,7 @@ class HiRISELabelRemapper:
         if class_index not in self.risk_map:
             raise ValueError(
                 f"Unknown HiRISE class index: {class_index}. "
-                f"Expected 0-7."
+                f"Expected 0-7 (real dataset has 8 classes only)."
             )
         return self.risk_map[class_index]
     
