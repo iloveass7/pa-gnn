@@ -28,20 +28,19 @@ class PrecomputedGraphDataset(Dataset):
         data.x           (N, 14)  — node feature matrix
         data.edge_index  (2, E)   — COO edge connectivity
         data.edge_attr   (E,)     — edge weights
-        data.pos         (N, 2)   — centroid (y, x) positions
-        data.y           (N,)     — node-level risk targets (or None)
+        data.y           (N,)     — node-level risk targets
         data.active_mask (N,)     — boolean active node mask
-        data.label_map   (H, W)   — superpixel label image (long tensor)
-
-    Args:
-        root_dir:   path to a split directory created by precompute_graphs.py
-                    (must contain manifest.json and graph_XXXXX.pt files)
-        transform:  optional PyG transform applied on-the-fly after loading
     """
 
     def __init__(self, root_dir, transform=None):
-        self.root_dir  = Path(root_dir)
-        self.transform = transform
+        # ── FIX: call super().__init__() BEFORE any other assignment ──────
+        # PyG's Dataset.__init__ sets up _indices, _data_list, and other
+        # internal attributes that __len__ and __getitem__ depend on.
+        # Without this call, accessing len(dataset) raises:
+        #   AttributeError: 'PrecomputedGraphDataset' has no attribute '_indices'
+        super().__init__(root=None, transform=transform)
+
+        self.root_dir = Path(root_dir)
 
         manifest_path = self.root_dir / "manifest.json"
         if not manifest_path.exists():
@@ -53,11 +52,7 @@ class PrecomputedGraphDataset(Dataset):
         with open(manifest_path) as f:
             self.manifest = json.load(f)
 
-        # Pre-build sorted list of absolute file paths for fast __getitem__
-        self._files = [
-            self.root_dir / entry["file"]
-            for entry in self.manifest
-        ]
+        self._files = [self.root_dir / entry["file"] for entry in self.manifest]
         self._stems = [entry["stem"] for entry in self.manifest]
 
     # ── PyG Dataset interface ──────────────────────────────────────────────
@@ -68,22 +63,17 @@ class PrecomputedGraphDataset(Dataset):
     def get(self, idx):
         data = torch.load(self._files[idx], map_location="cpu", weights_only=False)
 
-        # Guarantee the expected attributes exist (backward-compat with older .pt)
+        # Guarantee active_mask exists (backward compat with older .pt files)
         if not hasattr(data, "active_mask"):
-            N = data.x.size(0)
-            data.active_mask = torch.ones(N, dtype=torch.bool)
+            data.active_mask = torch.ones(data.x.size(0), dtype=torch.bool)
 
-        # Ensure data.y is always a float tensor (never None) so batching works.
-        # Graphs with no ground-truth get a tensor of -1 (all-ignore).
+        # Guarantee y is always a float tensor — PyG needs consistent types
+        # when batching. Graphs with no GT get all-ignore (-1).
         if not hasattr(data, "y") or data.y is None:
-            N = data.x.size(0)
-            data.y = torch.full((N,), -1.0, dtype=torch.float32)
+            data.y = torch.full((data.x.size(0),), -1.0, dtype=torch.float32)
 
-        # NOTE: do NOT attach data.stem — PyG DataLoader cannot collate strings
-        # and will crash on batch_size > 1. Use dataset.stems[idx] if needed.
-
-        # Drop label_map from batched data — it is a 2-D (H,W) tensor that
-        # PyG would incorrectly batch along dim-0. It is never used in training.
+        # Drop label_map — it is a 2D (H, W) tensor that PyG batches incorrectly
+        # along dim-0. It is never used during GNN training.
         if hasattr(data, "label_map"):
             del data.label_map
 
@@ -95,24 +85,17 @@ class PrecomputedGraphDataset(Dataset):
     # ── Convenience ────────────────────────────────────────────────────────
 
     def __repr__(self):
-        return (f"PrecomputedGraphDataset("
-                f"root={self.root_dir}, "
-                f"n_graphs={len(self)})")
+        return f"PrecomputedGraphDataset(root={self.root_dir}, n_graphs={len(self)})"
 
     @property
     def stems(self):
-        """Returns the list of image stem names (for debugging/verification)."""
         return self._stems
 
     @classmethod
     def from_split_dir(cls, graphs_base_dir, split, transform=None):
         """
         Convenience constructor.
-
-        Args:
-            graphs_base_dir: root output dir from precompute_graphs.py
-            split: 'train' | 'val' | 'test'
-            transform: optional PyG transform
+            graphs_base_dir : root output dir from precompute_graphs.py
+            split           : 'train' | 'val' | 'test'
         """
-        split_dir = Path(graphs_base_dir) / split
-        return cls(split_dir, transform=transform)
+        return cls(Path(graphs_base_dir) / split, transform=transform)

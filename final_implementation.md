@@ -62,7 +62,6 @@ Input Image (512×512×3)
 | Impact Ejecta | 5 | 0.55 |
 | Swiss Cheese | 6 | 0.85 |
 | Spider | 7 | 0.45 |
-| Edge Case | 8 | 0.50 |
 
 - **Filtering:** Original crops only (suffix-based, not positional)
 - **Evaluation:** Patch-level aggregation via `aggregate_patch_risk()` (mean of H_final)
@@ -163,15 +162,25 @@ Layer 2: GATv2Conv(128→32, 4 heads, concat=False) → 32-dim + ELU + Dropout(0
 Output:  Linear(32→1) + Sigmoid → p̂_i ∈ [0,1]
 ```
 
-**Training:**
-- Optimizer: Adam (lr=1e-3, wd=5e-4)
-- Epochs: 100, early stopping patience=15, monitor=`val_auc_roc`
-- Loss: BCE with positive_weight=3.0
-- **Weak Labeling:** 2-hop neighbours of hazards → label=0.7
+**Training Task: Continuous Regression on H_final (NOT binary classification)**
 
-**Node Deactivation:** p̂_i > (1.0 - deactivation_threshold) → obstacle
-- Config: `deactivation_threshold: 0.2` → risk > 0.8 → deactivated
-- Now reads from config (previously hardcoded)
+Previous approach (binary classification on AI4Mars labels) was abandoned because:
+- 87% of graphs had **zero hazard nodes** → 47:1 class imbalance
+- Weighted BCE with `positive_weight` tuning could not overcome this
+- Recall oscillated 0.0–0.55 with no convergence; AUC plateaued at 0.68
+
+Current approach:
+- **Target:** `data.x[:, 7]` = mean H_final per superpixel node (already in precomputed graphs — **no recomputation needed**)
+- **Loss:** SmoothL1 (Huber) — every node contributes, no class weighting
+- **Why this works:** GATv2 learns to propagate and refine the fusion risk estimate using neighbourhood attention. Nodes near hazard clusters get risk uplifted; nodes in homogeneous safe regions get risk downweighted. The spatial context is exactly the value GATv2 adds over the pointwise H_final estimate.
+
+Training config:
+- Optimizer: Adam (lr=1e-3, wd=5e-4)
+- Epochs: 100, early stopping patience=15, monitor=`val_mae` (mode=min)
+- No `positive_weight`, no weak labeling
+
+**Inference:** GATv2 output ∈ [0, 1] is used directly as risk score in A*.
+Node deactivation: risk > 0.8 → deactivated (= 1.0 - deactivation_threshold from config).
 
 ### Stage 7: Physics-Aware A* Path Planning
 **Files:** `src/planning/astar.py`, `heuristics.py`
@@ -199,9 +208,14 @@ python scripts/train_cnn.py
 # Step 4: Train Fusion (Stage 4) — CNN frozen
 python scripts/train_fusion.py --cnn_ckpt checkpoints/cnn/best_model.pth
 
-# Step 5: Train GNN — two options (see Section 4.1 below)
-python scripts/train_gnn.py         # original: slow, on-the-fly
-python scripts/train_gnn_fast.py    # recommended: precomputed graphs
+# Step 5: Precompute graphs ONCE (~3 hrs), then train GNN fast (~4 hrs)
+python scripts/precompute_graphs.py \
+    --fusion_ckpt checkpoints/fusion/best_model.pth \
+    --split all
+
+python scripts/train_gnn_fast.py \
+    --graphs_dir d:/Mars/pa-gnn/data/processed/graphs \
+    --batch_size 32
 
 # Step 6: Evaluate on AI4Mars test set
 python src/evaluation/evaluate_ai4mars.py
@@ -234,7 +248,7 @@ python scripts/train_gnn_fast.py \
 
 | Method | Per-image | Per-epoch (13k imgs) | 100 epochs |
 |---|---|---|---|
-| `train_gnn.py` (on-the-fly) | ~0.8s | ~3h | ~8 days |
+| On-the-fly (removed) | ~0.8s | ~3h | ~8 days |
 | `train_gnn_fast.py` (precomputed) | ~0.01s | ~2.5 min | ~4 hours |
 
 **New files (zero changes to existing code):**
@@ -284,8 +298,8 @@ python scripts/train_gnn_fast.py \
 
 | # | Fix | File(s) Changed | Severity |
 |---|---|---|---|
-| 1 | Added `import numpy as np` | `scripts/train_gnn.py` | 🔴 Bug fix |
-| 2 | Added `edge_case` class (index 8) | `label_remap.py`, `hirise.yaml` | 🔴 Crash prevention |
+| 1 | Removed `train_gnn.py` (replaced by precompute+fast path) | `scripts/` | 🔴 Maintenance |
+| 2 | Added `edge_case` class (index 8) — **reverted**: does not exist in real data | `label_remap.py` | 🔴 Spec alignment |
 | 3 | Set `joint_with_cnn: false` | `adaptive_fusion.yaml` | 🔴 Training stability |
 | 4 | Added `aggregate_patch_risk()` + `compute_hirise_metrics()` | `metrics.py` | 🟡 Missing evaluation |
 | 5 | Deactivation threshold reads from config | `pipeline.py` | 🟡 Config consistency |
@@ -294,6 +308,11 @@ python scripts/train_gnn_fast.py \
 | 8 | Added `warnings.warn()` on empty valid_mask | `src/training/losses.py` | 🟡 Debug aid |
 | 9 | **Palette-safe `load_label_mask()` — mode-aware reader** | `src/utils/io.py` | 🔴 **Training-breaking bug** |
 | 10 | **Fixed range mask condition (`!= 0` not `== 0`)** | `src/data/loaders/ai4mars_loader.py` | 🔴 **Training-breaking bug** |
+| 11 | `model` → `gat_model` in grad clip (NameError) | `scripts/train_gnn.py` (now deleted) | 🔴 Crash fix |
+| 12 | `current_auc` use-before-assign (NameError) | `scripts/train_gnn.py` (now deleted) | 🔴 Crash fix |
+| 13 | SLIC `start_label=0→1`; robust batch-dim handling | `src/graph/superpixels.py` | 🟠 Silent data loss |
+| 14 | Hardcoded `724.07` → computed max-node-distance | `src/inference/pipeline.py` | 🟡 Config consistency |
+| 15 | **GNN reframed: BCE classification → SmoothL1 regression on H_final** | `scripts/train_gnn_fast.py`, `configs/gnn/gatv2.yaml` | 🔴 **47:1 imbalance — model never converged** |
 
 ### Fix #9 Detail — Palette PNG label loading
 
@@ -350,7 +369,8 @@ pa-gnn/
 ├── scripts/
 │   ├── train_cnn.py                 # Stage 3 training
 │   ├── train_fusion.py              # Stage 4 training (CNN frozen)
-│   ├── train_gnn.py                 # Stage 6 training
+│   ├── precompute_graphs.py         # Stage 6: one-time graph pre-computation
+│   ├── train_gnn_fast.py            # Stage 6: fast GNN training on precomputed graphs
 │   ├── validate_datasets.py         # Data integrity checks
 │   └── create_splits.py             # Train/val/test splitting
 ├── src/

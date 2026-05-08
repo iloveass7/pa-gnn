@@ -1,4 +1,16 @@
 # GATv2 Configuration
+# Task: BCE binary classification — label = (H_final > 0.5) per node
+# ─────────────────────────────────────────────────────────────────────
+# WHY BCE CLASSIFICATION (v3):
+#   Regression on H_final (v2) caused output collapse to mean (std=0.054).
+#   Binary classification with positive_weight=5.0 on the 5.5:1 imbalance
+#   (H_final > 0.5 labels, ~15.5% positive) converged cleanly.
+#
+# INFERENCE THRESHOLD (empirically determined via threshold sweep):
+#   t=0.70 → F1=0.5385, Recall=0.536, Precision=0.541, Flagged=15.3%
+#   This is the natural calibration point: flagged% ≈ true positive rate.
+#   Use this threshold in pipeline.py and evaluate_ai4mars.py.
+# ─────────────────────────────────────────────────────────────────────
 
 model:
   name: "gatv2"
@@ -22,6 +34,7 @@ model:
     activation: "elu"
   
   # Output head: Linear(32→1) → Sigmoid
+  # Sigmoid naturally bounds output to [0,1], matching H_final target range
   output:
     in_features: 32
     out_features: 1
@@ -36,18 +49,18 @@ training:
   early_stopping:
     enabled: true
     patience: 15
-    monitor: "val_auc_roc"
+    monitor: "val_hazard_recall"  # H_final-derived recall
     mode: "max"
   
   loss:
-    type: "bce"
-    positive_weight: 3.0   # Weight for hazardous class
+    type: "bce"              # Binary cross-entropy (H_final > 0.5 labels)
+    positive_weight: 5.0     # 5.5:1 imbalance → weight=5 (vs 47:1 before)
   
-  # Weak labeling: 2-hop neighbours of confirmed hazards
+  # Weak labeling: DISABLED (labels come from H_final, not from graph topology)
   weak_labeling:
-    enabled: true
-    hops: 2
-    label_value: 0.7       # Weaker than confirmed hazards (1.0)
+    enabled: false
+    hops: 2                # Kept for reference, not used
+    label_value: 0.8       # Kept for reference, not used
 
 graph:
   # SLIC superpixel parameters
@@ -56,11 +69,21 @@ graph:
     compactness: 10.0
     sigma: 1.0
 
-  # Node deactivation threshold
-  hazard_threshold: 0.7    # Nodes with mean(H_final) > 0.7 → obstacle
-  deactivation_threshold: 0.2  # After GATv2: p̂_i < 0.2 → deactivated
+  # Node deactivation threshold (inference / A* path planning)
+  # Nodes with mean(H_final) > 0.7 become virtual obstacle nodes in graph construction.
+  hazard_threshold: 0.7
 
-  # Edge weight formula coefficients
+  # GATv2 inference decision threshold (empirically set via threshold sweep on val set)
+  # t=0.70 → best F1=0.5385, Recall=0.536, Precision=0.541, Flagged=15.3%
+  # (true hazard rate is 15.5% — near-perfect calibration)
+  inference_threshold: 0.70
+
+  # A* deactivation: nodes with GATv2 risk > (1 - deactivation_threshold) are blocked.
+  # deactivation_threshold=0.30 → blocks nodes with risk > 0.70  (matches inference_threshold)
+  # Previously 0.20 → blocked only risk > 0.80 (too permissive given t=0.70 calibration)
+  deactivation_threshold: 0.30
+
+  # Edge weight formula: w(u,v) = α·avg_risk + β·norm_dist + γ·|slope_u - slope_v|
   edge_weights:
     alpha_w: 0.6           # Risk weight
     beta_w: 0.25           # Distance weight

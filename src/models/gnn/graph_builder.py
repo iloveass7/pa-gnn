@@ -63,12 +63,19 @@ class GraphBuilder:
         pos = torch.tensor(centroids, dtype=torch.float32, device=device)
         
         # 4. Create active mask (True = active, False = deactivated obstacle)
-        active_mask = ~torch.tensor(is_hazardous, dtype=torch.bool, device=device)
-        
+        is_hazardous_tensor = torch.tensor(is_hazardous, dtype=torch.bool, device=device)
+
+        if target is not None:
+            # Training mode — all nodes active so GNN learns from hazard examples
+            active_mask = torch.ones(len(is_hazardous), dtype=torch.bool, device=device)
+        else:
+            # Inference mode — deactivate hazard nodes so A* avoids them
+            active_mask = ~is_hazardous_tensor
+
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, pos=pos)
         data.active_mask = active_mask
         data.label_map = torch.tensor(label_map, dtype=torch.long, device=device)
         if node_targets is not None:
             data.y = torch.tensor(node_targets, dtype=torch.float32, device=device)
-        
+
         return data

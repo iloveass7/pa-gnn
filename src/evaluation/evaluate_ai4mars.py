@@ -17,7 +17,7 @@ from src.utils.seed import set_seed, get_device
 from src.data.loaders.ai4mars_loader import AI4MarsDataset
 from src.inference.pipeline import PA_GNN_Pipeline
 
-def evaluate_dataset(pipeline, dataset, baselines, device):
+def evaluate_dataset(pipeline, dataset, baselines, device, hcr_threshold=0.7):
     results = {b: {'success': 0, 'total': 0, 'hcr_list': [], 'time_list': []} for b in baselines}
     
     for i in range(len(dataset)):
@@ -40,7 +40,7 @@ def evaluate_dataset(pipeline, dataset, baselines, device):
             if path is not None:
                 results[bl]['success'] += 1
                 
-                high_cost_nodes = sum(1 for p in path if p['risk'] > 0.7)
+                high_cost_nodes = sum(1 for p in path if p['risk'] > hcr_threshold)
                 hcr = high_cost_nodes / len(path)
                 results[bl]['hcr_list'].append(hcr)
                 
@@ -72,14 +72,25 @@ def main():
     results_dir = Path(base_cfg.paths.results) / "stage7_eval"
     results_dir.mkdir(parents=True, exist_ok=True)
     
-    pipeline = PA_GNN_Pipeline(base_cfg, cnn_cfg, phys_cfg, fusion_cfg, gat_cfg, device)
+    fusion_ckpt = Path(base_cfg.paths.checkpoints) / "fusion" / "best_model.pth"
+    gat_ckpt    = Path(base_cfg.paths.checkpoints) / "gnn_fast" / "best_gat_model.pth"
+
+    print(f"Fusion ckpt : {'FOUND' if fusion_ckpt.exists() else 'NOT FOUND — using random weights'} ({fusion_ckpt})")
+    print(f"GATv2 ckpt  : {'FOUND' if gat_ckpt.exists() else 'NOT FOUND — using random weights'} ({gat_ckpt})")
+
+    pipeline = PA_GNN_Pipeline(
+        base_cfg, cnn_cfg, phys_cfg, fusion_cfg, gat_cfg, device,
+        fusion_ckpt=str(fusion_ckpt) if fusion_ckpt.exists() else None,
+        gat_ckpt=str(gat_ckpt) if gat_ckpt.exists() else None,
+    )
     
     test_ds = AI4MarsDataset.from_config(base_cfg, ai4mars_cfg, split="test")
     
     baselines = ['b1_euclidean', 'b2_physics', 'b3_learned', 'b4_static', 'proposed']
     
     print("Evaluating baselines on AI4Mars Test Set...")
-    results = evaluate_dataset(pipeline, test_ds, baselines, device)
+    hcr_thresh = gat_cfg.graph.get('inference_threshold', 0.70)
+    results = evaluate_dataset(pipeline, test_ds, baselines, device, hcr_threshold=hcr_thresh)
     
     df = pd.DataFrame.from_dict(results, orient='index')
     print("\n--- Final Results (AI4Mars) ---")

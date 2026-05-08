@@ -87,7 +87,16 @@ def main():
     results_dir = Path(base_cfg.paths.results) / "stage7_ctx"
     results_dir.mkdir(parents=True, exist_ok=True)
     
-    pipeline = PA_GNN_Pipeline(base_cfg, cnn_cfg, phys_cfg, fusion_cfg, gat_cfg, device)
+    fusion_ckpt = Path(base_cfg.paths.checkpoints) / "fusion"   / "best_model.pth"
+    gat_ckpt    = Path(base_cfg.paths.checkpoints) / "gnn_fast" / "best_gat_model.pth"
+    print(f"Fusion ckpt : {'FOUND' if fusion_ckpt.exists() else 'NOT FOUND'} ({fusion_ckpt})")
+    print(f"GATv2 ckpt  : {'FOUND' if gat_ckpt.exists() else 'NOT FOUND'} ({gat_ckpt})")
+
+    pipeline = PA_GNN_Pipeline(
+        base_cfg, cnn_cfg, phys_cfg, fusion_cfg, gat_cfg, device,
+        fusion_ckpt=str(fusion_ckpt) if fusion_ckpt.exists() else None,
+        gat_ckpt=str(gat_ckpt)    if gat_ckpt.exists()    else None,
+    )
     
     ctx_ds = CTXDataset.from_config(base_cfg, ctx_cfg, max_tiles=100)
     indices = ctx_ds.select_demo_tiles(n=3, seed=base_cfg.project.seed)
