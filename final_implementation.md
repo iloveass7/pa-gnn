@@ -391,3 +391,169 @@ pa-gnn/
 │   └── visualization/               # path plotting utilities
 └── implementation.md                # ← This document
 ```
+
+---
+
+## 9. GNN Research Audit Fixes (2026-05-13)
+
+> All code changes below address findings from `GNN Research Audit.md`.
+> **Last updated:** 2026-05-13 — covers all 12 implemented changes.
+
+### 9.1 Critical Fixes 🔴
+
+#### C1 — CNN Underfitting (`configs/cnn/mobilenetv3.yaml`)
+The CNN's `val_hazard_recall` was stuck at 0.652 (target: >0.85) due to too-conservative hyperparameters.
+
+| Parameter | Before | After | Rationale |
+|---|---|---|---|
+| `learning_rate` | `1e-4` | `3e-4` | Prevents extremely slow convergence (loss drop was only 1.073→1.042 over 21 epochs) |
+| `batch_size` | `8` | `16` | RTX 3060 Ti (8GB) can fit 16 with mixed precision; reduces gradient noise |
+| `tv_weight` | `0.1` | `0.0` | Remove conflicting smoothness gradient while model learns the signal; re-enable once recall >0.80 |
+| `patience` | `10` | `15` | Give higher LR room to converge before early stopping triggers |
+
+> ⚠️ **Requires full pipeline retraining** — see §10 for retraining order.
+
+#### C2 — 60% Success Rate (`src/inference/pipeline.py`)
+The proposed method's A* failed to find a path in 40% of test images because a dense cluster of deactivated nodes (risk > 0.70) blocked all routes.
+
+**Fix:** Adaptive threshold relaxation — if A* fails at threshold 0.70, automatically retry with progressively looser thresholds (0.80 → 0.90 → 1.01). Paths found under relaxed thresholds are tagged with `relaxed_threshold` in the path dict so the evaluator can report usage percentage.
+
+```python
+relaxation_steps = [0.70, 0.80, 0.90, 1.01]  # 1.01 = unblock all nodes
+```
+
+#### C3 — Missing Baselines B5 + Oracle (`src/inference/pipeline.py`)
+Blueprint §9.1 specifies 7 baselines. Only 5 were implemented.
+
+| Baseline | `run_baseline=` | Description |
+|---|---|---|
+| **B5 (No-GNN)** | `'b5_no_gnn'` | Skips GATv2; uses `H_final` (feature[7]) directly as risk score. Isolates GNN contribution. |
+| **Oracle** | `'oracle'` | Aggregates ground-truth AI4Mars labels per superpixel node. Upper performance bound. |
+
+Both are now integrated into `evaluate_ai4mars.py` as default baselines.
+
+#### C5 — Inadmissible Heuristic (`src/planning/heuristics.py`, `src/planning/astar.py`)
+Previous heuristic `h(n) = d_euc * (1 + γ_r·risk + γ_s·slope)` could **overestimate** true cost → A* was not optimal (thesis claims were technically false).
+
+**Fix:** Default is now admissible pure Euclidean `h(n) = d_euc`. Risk and slope are already encoded in edge weights `g(n)`, so A* still finds risk-aware paths while guaranteeing path-optimality on the constructed graph. The weighted-A* variant is still available via `admissible=False` and must be documented in the thesis as "ε-suboptimal weighted A*".
+
+---
+
+### 9.2 Moderate Fixes 🟠
+
+#### M1 — Weak Labeling Re-enabled (`configs/gnn/gatv2.yaml`)
+Blueprint §7.7.3 mandates 2-hop weak label propagation. The implementation existed but was gated off.
+
+```yaml
+weak_labeling:
+  enabled: true   # was: false
+  hops: 2
+  label_value: 0.8
+```
+
+#### M4 — B4 Static Fusion Corrected (`src/inference/pipeline.py`)
+B4 previously fell through to `else: w = edge_attr[i]` (using adaptive fusion weights). B4 must use a **fixed α=0.5** mix of physics and learned features.
+
+```python
+# B4: static 50/50 fusion (no adaptive α)
+avg_static = 0.5 * (H_physics_u + H_physics_v) / 2.0
+           + 0.5 * (H_learned_u + H_learned_v) / 2.0
+w = α_w * avg_static + β_w * dist + γ_w * diff_slope
+```
+
+#### M5 — Node Feature Normalization (`src/graph/node_features.py`)
+GATv2 attention is scale-sensitive. Three features had raw scales inconsistent with the `[0,1]` range of all other features.
+
+| Feature | Before | After |
+|---|---|---|
+| `centroid_x` (index 10) | `0–512` (raw pixels) | `cx / W` → `[0, 1]` |
+| `centroid_y` (index 11) | `0–512` (raw pixels) | `cy / H` → `[0, 1]` |
+| `area` (index 12) | `~50–2000` (pixel count) | `area / (H*W)` → `[0, 1]` |
+
+A final `np.clip(features, 0.0, 1.0)` is applied to guard against numerical noise.
+
+Additionally, the `_to_2d()` helper was added to robustly squeeze batched tensors `(B, 1, H, W)` → `(H, W)` for all input maps, replacing the fragile `.squeeze()` call.
+
+#### M7 — Stale Docstring Fixed (`scripts/train_gnn_fast.py`)
+The module docstring incorrectly described the task as "SmoothL1 regression" (v2, abandoned). Updated to accurately describe the current v3 weighted BCE classification approach.
+
+---
+
+### 9.3 Minor Fixes 🟡
+
+#### m1 — Hardcoded 50-Sample Cap → CLI Arg (`src/evaluation/evaluate_ai4mars.py`)
+```bash
+# Old: only evaluated 50/322 test images (15%)
+# New default: full test set
+python src/evaluation/evaluate_ai4mars.py --max_samples 322
+# Quick smoke-test:
+python src/evaluation/evaluate_ai4mars.py --max_samples 50 --n_trials 1 --seeds 42
+```
+
+#### m2 — Fixed Start/Goal → Random Sampling (`src/evaluation/evaluate_ai4mars.py`)
+Evaluation no longer uses a single fixed `(10%,10%)→(90%,90%)` diagonal for every image. Now uses `--n_trials` (default: 3) random start/goal pairs per image, with a minimum separation of 30% of the image diagonal.
+
+#### PLR Metric Added (`src/planning/astar.py`, `src/evaluation/evaluate_ai4mars.py`)
+Path Length Ratio = `actual_path_length / straight_line_distance`. Blueprint target: PLR < 1.30. Now computed and reported for all baselines alongside Success Rate and HCR.
+
+Each `path_details` dict now includes `euclidean_to_goal` and `straight_line` for PLR computation.
+
+#### C6 — Multi-Seed Statistical Evaluation (`src/evaluation/evaluate_ai4mars.py`)
+```bash
+python src/evaluation/evaluate_ai4mars.py --seeds 42 123 7
+```
+- Reports **mean ± std** across seeds for all metrics
+- Runs **Wilcoxon signed-rank test** (proposed vs each baseline, HCR, `alternative='less'`)
+- Saves `wilcoxon.json` and `eval_config.json` to `results/stage7_eval/`
+- Blueprint compliance check printed automatically (Success Rate >0.95, HCR <0.05, PLR <1.30)
+
+---
+
+### 9.4 Cross-File Consistency Notes
+
+| Issue | Resolution |
+|---|---|
+| `data.label_map` removed then needed by 5 inference scripts | Restored to `graph_builder.py`. PyG DataLoader strips it via `PrecomputedGraphDataset.get()` before batch training. Safe for single-image inference. |
+| `data.y = None` breaks PyG batching and `data.y >= 0` comparisons | `graph_builder.py` now always sets `data.y` as float tensor (`-1.0` fill for no-target case). `PrecomputedGraphDataset.get()` has the same guard for old `.pt` files. |
+| `loader.batch_size` is `None` on PyG DataLoader | `train_gnn_fast.py` throughput now reported as `batches/s` instead of `graphs/s`. |
+| Wilcoxon crashes if `'proposed'` not in `--baselines` | `aggregate_seeds()` returns early with empty `wilcoxon_results` dict. |
+| `data.stem` (string) crashes PyG batching | Removed from `PrecomputedGraphDataset.get()`. Use `dataset.stems[idx]` if needed. |
+
+---
+
+## 10. Updated Pipeline Commands
+
+```bash
+# ── Stage 3: CNN (RETRAIN with new hyperparameters from C1 fix) ──────────
+python scripts/train_cnn.py
+# Target: val_hazard_recall > 0.85 before proceeding
+
+# ── Stage 4: Fusion (retrain after CNN improvement) ───────────────────────
+python scripts/train_fusion.py --cnn_ckpt checkpoints/cnn/best_model.pth
+
+# ── Stage 5: Precompute graphs (one-time, ~3 hrs) ─────────────────────────
+python scripts/precompute_graphs.py \
+    --fusion_ckpt checkpoints/fusion/best_model.pth \
+    --split all
+
+# ── Stage 6: Fast GNN training ────────────────────────────────────────────
+python scripts/train_gnn_fast.py
+# Config: weak_labeling now ENABLED (M1 fix)
+
+# ── Stage 7: Full evaluation (all fixes active) ───────────────────────────
+python src/evaluation/evaluate_ai4mars.py \
+    --max_samples 322 \
+    --n_trials 3 \
+    --seeds 42 123 7
+# Outputs: ai4mars_results.csv, wilcoxon.json, eval_config.json
+
+# ── Quick smoke-test (before full run) ────────────────────────────────────
+python src/evaluation/evaluate_ai4mars.py \
+    --max_samples 10 --n_trials 1 --seeds 42 \
+    --no_oracle
+```
+
+> **Retraining cascade:** CNN → Fusion → Precompute Graphs → GNN → Evaluate.
+> If only the GNN config is changed (e.g. weak labeling), you can skip to
+> `train_gnn_fast.py` without recomputing graphs.
+

@@ -1,21 +1,21 @@
 """
 train_gnn_fast.py — Fast GNN training using pre-computed graphs.
 
-GNN Task (v3): Binary classification using H_final > 0.5 as node labels.
+GNN Task (v3): Binary BCE node classification with H_final-derived labels.
 ─────────────────────────────────────────────────────────────────────────
-PREVIOUS APPROACHES (abandoned):
-  v1 — Binary BCE on AI4Mars labels → 1.9% positive, 47:1 imbalance → oscillation
-  v2 — SmoothL1 regression on H_final → output collapsed to mean (std=0.054)
-       GNN predicted ~0.40 for every node, no node exceeded 0.7, A* useless.
-
 CURRENT APPROACH (v3):
   Target  : (data.x[:, 7] > 0.5).float()  ← H_final-derived binary labels
-  Positive : 15.5% of nodes (vs 1.9% before) → 5.5:1 imbalance, manageable
-  Loss    : BCE with positive_weight=5.0
-  Result  : GNN learns to flag high-risk nodes, output spans full [0,1] range
-  No graph recomputation needed — labels computed from existing feature matrix.
+  Positive: 15.5% of nodes (5.5:1 imbalance) → positive_weight=5.0
+  Loss    : weighted BCE (NOT SmoothL1 regression — that was v2 and collapsed)
+  Result  : GNN refines H_final using 2-hop neighbourhood attention;
+            output spans full [0,1] range; A* deactivates nodes where risk > 0.70
+
+PREVIOUS APPROACHES (abandoned):
+  v1 — Binary BCE on raw AI4Mars labels → 1.9% positive, 47:1 imbalance → oscillation
+  v2 — SmoothL1 regression on H_final  → output collapsed to mean (std=0.054)
 ──────────────────────────────────────────────────────────────────────────
 """
+
 
 import sys
 import argparse
