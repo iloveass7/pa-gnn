@@ -56,11 +56,12 @@ training:
     type: "bce"              # Binary cross-entropy (H_final > 0.5 labels)
     positive_weight: 5.0     # 5.5:1 imbalance → weight=5 (vs 47:1 before)
   
-  # Weak labeling: DISABLED (labels come from H_final, not from graph topology)
+  # Weak labeling: propagate hazard label to 2-hop neighbours of confirmed hazards.
+  # Blueprint §7.7.3: required. Re-enabled after M1 audit finding.
   weak_labeling:
-    enabled: false
-    hops: 2                # Kept for reference, not used
-    label_value: 0.8       # Kept for reference, not used
+    enabled: true
+    hops: 2
+    label_value: 0.8       # Soft label for weak neighbours (vs 1.0 for confirmed)
 
 graph:
   # SLIC superpixel parameters

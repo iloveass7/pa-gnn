@@ -21,16 +21,20 @@ model:
 
 training:
   optimizer: "adamw"
-  learning_rate: 1.0e-4
+  # C1 fix: raised from 1e-4 → 3e-4. Previous LR caused extremely slow convergence
+  # (train_loss 1.073 → 1.042 over 21 epochs). Warmup handled by scheduler.
+  learning_rate: 3.0e-4
   weight_decay: 1.0e-4
   scheduler: "cosine_annealing"
   scheduler_T_max: 60
-  
-  batch_size: 8
+
+  # C1 fix: increased from 8 → 16. RTX 3060 Ti (8GB) can fit 16 with mixed precision.
+  # Larger batches reduce gradient noise for this 13K-image dataset.
+  batch_size: 16
   epochs: 60
   early_stopping:
     enabled: true
-    patience: 10
+    patience: 15            # C1 fix: raised from 10 to give higher LR more convergence room
     monitor: "val_hazard_recall"
     mode: "max"
   
@@ -39,4 +43,7 @@ training:
     bce_hazard_weight: 3.0     # Higher weight for hazardous regions
     dice_weight: 0.5           # λ1
     dice_threshold: 0.7        # Dice applied to pixels with label > 0.7
-    tv_weight: 0.1             # λ2 — total variation smoothness
+    # C1 fix: TV loss set to 0.0 initially — let model learn signal first,
+    # then re-enable smoothness regularisation once recall > 0.80.
+    # Previous tv_weight=0.1 added conflicting gradient pressure during early training.
+    tv_weight: 0.0
